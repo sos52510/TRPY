@@ -31,6 +31,18 @@ class Mapper:
         self.nm_arr: np.ndarray
         self._load_csv()
 
+    # ------------------------------ file I/O -------------------------------
+    def load(self, path: pathlib.Path) -> None:
+        """Load calibration data from the given CSV file."""
+        self.csv_path = pathlib.Path(path)
+        self._load_csv()
+
+    def save(self, path: pathlib.Path | None = None) -> None:
+        """Save current calibration data to CSV."""
+        if path is not None:
+            self.csv_path = pathlib.Path(path)
+        self._save_csv()
+
     # -------------------------------- API ---------------------------------
     def nm_from_idx(self, idx: float) -> float:
         """輸入 idx (float 可)，回傳波長 nm；範圍外 raise ValueError"""
