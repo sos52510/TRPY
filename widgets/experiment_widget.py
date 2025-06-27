@@ -35,6 +35,7 @@ class ExperimentWidget(QtWidgets.QWidget):
       
         # ---------------- 控件 ----------------
         self._build_controls()
+        self._idx_known = False
 
     # -------------------------------------------------
     # 控件建構
@@ -119,10 +120,9 @@ class ExperimentWidget(QtWidgets.QWidget):
 
         self.btn_autocheck.clicked.connect(self.auto_check)
         self.btn_goto.clicked.connect(self.goto_target)
-        self.motor.positionChanged.connect(self.spn_idx_now.setValue)
-        self.spn_idx_now.editingFinished.connect(
-            lambda: setattr(self.motor, "position", self.spn_idx_now.value())
-        )
+        self.motor.positionChanged.connect(self._on_motor_pos)
+        self.motor.hitLimit.connect(self._on_limit)
+        self.spn_idx_now.editingFinished.connect(self._on_idx_edit)
 
 
         
@@ -139,9 +139,20 @@ class ExperimentWidget(QtWidgets.QWidget):
         self.spn_ev_set.valueChanged.connect(
             lambda v: self.spn_wl_set.setValue(1239.84193/v))
 
+    def _on_motor_pos(self, val: int) -> None:
+        self._idx_known = True
+        self.spn_idx_now.setValue(val)
+
+    def _on_idx_edit(self) -> None:
+        self._idx_known = True
+        self.motor.position = self.spn_idx_now.value()
+
+    def _on_limit(self, idx: int) -> None:
+        QtWidgets.QMessageBox.warning(self, "觸及極限", f"位置 {idx} 超出安全範圍")
+
     def goto_target(self):
         # 1) 檢查「目前計數器」是否輸入
-        if self.spn_idx_now.value() == 0 and not hasattr(self, "_idx_known"):
+        if not self._idx_known:
             QtWidgets.QMessageBox.warning(self, "未知計數器", "請先輸入目前計數器位置！")
             return
         # 2) 校正表是否存在
@@ -191,6 +202,9 @@ class ExperimentWidget(QtWidgets.QWidget):
     # 掃描控制
     # -------------------------------------------------
     def start_scan(self) -> None:
+        if not self._idx_known:
+            QtWidgets.QMessageBox.warning(self, "未知計數器", "請先輸入目前計數器位置！")
+            return
         ev_s = self.spn_ev_start.value()
         ev_e = self.spn_ev_end.value()
         step = self.spn_ev_step.value() or 0.01
@@ -246,6 +260,9 @@ class ExperimentWidget(QtWidgets.QWidget):
         self.tab_widget.setCurrentWidget(self.live_widget)
 
     def auto_check(self):
+        if not self._idx_known:
+            QtWidgets.QMessageBox.warning(self, "未知計數器", "請先輸入目前計數器位置！")
+            return
         ev_s = self.spn_ev_start.value()
         ev_e = self.spn_ev_end.value()
         step = self.spn_ev_step.value() or 0.01
