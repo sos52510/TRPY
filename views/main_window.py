@@ -25,20 +25,20 @@ class MultiTabMainWindow(QtWidgets.QMainWindow):
         self.statusBar().showMessage("Initializing…")
         
         self.mapper = Mapper()
-        self.motor = MotorArduino()
+        try:
+            self.motor = MotorArduino()
+        except Exception as e:  # noqa: broad-except
+            show_fatal("Motor Error", str(e))
 
-        if not offline:
-            try:
-                self.lockin = LockInNF5610B()  
-                self.offline = False
-            except Exception as e:
-                QtWidgets.QMessageBox.warning(self, "Lock‑in Error", f"無法連接 NF 5610B → 轉離線模式\n{e}")
-                self.lockin = LockInDummy()
-                self.offline = True
-   
-        else:
+        if offline:
             self.lockin = LockInDummy()
             self.offline = True
+        else:
+            try:
+                self.lockin = LockInNF5610B()
+                self.offline = False
+            except Exception as e:  # noqa: broad-except
+                show_fatal("Lock‑in Error", f"無法連接 NF 5610B\n{e}")
             
         tabs = QtWidgets.QTabWidget()
         self.mapper = Mapper()
@@ -69,8 +69,22 @@ class MultiTabMainWindow(QtWidgets.QMainWindow):
     
     # MultiTabMainWindow
     def stop_all_threads(self):
-        for th in (self.scan_thread, self.jog_thread, self.check_thread):
-           if th and th.isRunning():
-               th.requestInterruption()
-               th.quit()
-               th.wait()
+        """Gracefully stop any running worker threads."""
+        for name in ("scan_thread", "jog_thread", "check_thread"):
+            th = getattr(self, name, None)
+            if th and th.isRunning():
+                th.requestInterruption()
+                th.quit()
+                th.wait()
+
+    def closeEvent(self, event):  # noqa: D401
+        """Cleanup resources on window close."""
+        try:
+            self.stop_all_threads()
+        finally:
+            if hasattr(self, "motor"):
+                try:
+                    self.motor.close()
+                except Exception:
+                    pass
+            event.accept()

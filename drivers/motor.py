@@ -79,6 +79,7 @@ class MotorArduino(QObject):  # pylint: disable=too-many-instance-attributes
         self._pos_idx = int(idx)
         # 同步給韌體，但不動作
         self._write(f"S{idx}")
+        self.positionChanged.emit(self._pos_idx)
 
     def goto(self, target_idx: int) -> bool:
         """阻塞定位。成功 True / 失敗 False"""
@@ -102,7 +103,16 @@ class MotorArduino(QObject):  # pylint: disable=too-many-instance-attributes
             raise RuntimeError("Motor no ACK")
 
         self._pos_idx = target_idx
+        self.positionChanged.emit(self._pos_idx)
         return True
+
+    def close(self) -> None:
+        """Close serial port."""
+        if self._ser:
+            try:
+                self._ser.close()
+            finally:
+                self._ser = None
         
     # for 手動測試: python -m motor
     @classmethod
@@ -151,6 +161,7 @@ class MotorArduino(QObject):  # pylint: disable=too-many-instance-attributes
     def _write(self, msg: str) -> None:
         if not self._ser:
             raise RuntimeError("Serial not open")
+        self._ser.reset_input_buffer()
         self._ser.write(f"{msg}\n".encode())
 
     def _wait_ok(self, tmax: float) -> bool:

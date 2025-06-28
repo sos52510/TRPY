@@ -10,6 +10,7 @@ class CalibrationWidget(QtWidgets.QWidget):
         self.motor = motor
         self.mapper = mapper
         self.cal_tbl = []                         # 暫存校正點
+        self._idx_known = False
 
         # ───── 控件 ─────
         self.spn_nm   = QtWidgets.QDoubleSpinBox(); self.spn_nm.setRange(100,3000); self.spn_nm.setDecimals(1); self.spn_nm.setSingleStep(0.1)
@@ -39,10 +40,20 @@ class CalibrationWidget(QtWidgets.QWidget):
         self.btn_add.clicked.connect(self.add_point)
         self.btn_save.clicked.connect(self.on_save_calib)
         self.btn_load.clicked.connect(self.on_load_calib)
-        self.motor.positionChanged.connect(self.spn_idx_now.setValue)
-        self.spn_idx_now.editingFinished.connect(
-            lambda: setattr(self.motor, "position", self.spn_idx_now.value())
-        )
+        self.motor.positionChanged.connect(self._on_motor_pos)
+        self.motor.hitLimit.connect(self._on_limit)
+        self.spn_idx_now.editingFinished.connect(self._on_idx_edit)
+
+    def _on_motor_pos(self, val: int) -> None:
+        self._idx_known = True
+        self.spn_idx_now.setValue(val)
+
+    def _on_idx_edit(self) -> None:
+        self._idx_known = True
+        self.motor.position = self.spn_idx_now.value()
+
+    def _on_limit(self, idx: int) -> None:
+        QtWidgets.QMessageBox.warning(self, "觸及極限", f"位置 {idx} 超出安全範圍")
 
 
     # ───── 功能 ─────
@@ -57,41 +68,45 @@ class CalibrationWidget(QtWidgets.QWidget):
         if hasattr(self, "worker") and self.worker.isRunning():
             return
 
+        if not self._idx_known:
+            QtWidgets.QMessageBox.warning(self, "未知計數器", "請先輸入目前計數器位置！")
+            return
+
         step_nm = self.spn_step.value()
         if self.mapper.point_count() >= 2:
             # 已有正式校正 → 用 Mapper 內插求「這一步」等幾格 idx
-            nm_now  = self.spn_nm.value()
+            nm_now = self.spn_nm.value()
             idx_now = self.mapper.idx_from_nm(nm_now)
             idx_next = self.mapper.idx_from_nm(nm_now + step_nm)
             pulse_step = int(round(abs(idx_next - idx_now)))
-            idx_next = self.mapper.idx_from_nm(nm_now + step_nm)
-
         else:
-                # 還沒正式校正 → 用簡單斜率估計
-                pulse_step = self._nm_to_pulse(step_nm)
+            # 還沒正式校正 → 用簡單斜率估計
+            pulse_step = self._nm_to_pulse(step_nm)
 
         target_idx = max(0, min(999, self.motor.position + sign * pulse_step))
         self.worker = MotorMoveWorker(self.motor, target_idx, self)
-        self.worker.finished.connect(self.spn_idx_now.setValue)
+        self.worker.finished.connect(self._on_motor_pos)
         self.worker.start()
  
     def add_point(self):
         lam_nm = self.spn_nm.value()
         pulse  = self.spn_idx_now.value()
 
+        if not self._idx_known:
+            QtWidgets.QMessageBox.warning(self, "未知計數器", "請先輸入目前計數器位置！")
+            return
+
         # ① 寫入 Mapper（真正的校正表）
-        self.mapper.add_point(idx=pulse, nm=lam_nm)     # ★ 改這行
+        self.mapper.add_point(idx=pulse, nm=lam_nm)
 
         # ② 本地暫存，用來估斜率
-        self.mapper.add_point(idx=pulse, nm=lam_nm)
+        self.cal_tbl.append((lam_nm, pulse))
+
         # 將 Mapper 的新資料丟出去，讓 ExperimentWidget 重建校正表
         self.cal_loaded.emit(list(zip(self.mapper.nm_arr, self.mapper.idx_arr)))
 
         # ③ 更新 GUI
         self.lst_pts.addItem(f"λ = {lam_nm:.1f} nm   →   p = {pulse}")
-
-        # ④ 通知 ExperimentWidget 重新建立校正表
-        self.cal_loaded.emit(self.cal_tbl)
 
     
     def on_save_calib(self):
