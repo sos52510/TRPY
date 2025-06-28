@@ -107,7 +107,10 @@ class MotorArduino(QObject):  # pylint: disable=too-many-instance-attributes
         return True
 
     def close(self) -> None:
-        """Close serial port."""
+        """Close serial port.
+
+        Always call this when exiting to free the COM port.
+        """
         if self._ser:
             try:
                 self._ser.close()
