@@ -75,15 +75,13 @@ class CalibrationWidget(QtWidgets.QWidget):
         step_nm = self.spn_step.value()
         if self.mapper.point_count() >= 2:
             # 已有正式校正 → 用 Mapper 內插求「這一步」等幾格 idx
-            nm_now  = self.spn_nm.value()
+            nm_now = self.spn_nm.value()
             idx_now = self.mapper.idx_from_nm(nm_now)
             idx_next = self.mapper.idx_from_nm(nm_now + step_nm)
             pulse_step = int(round(abs(idx_next - idx_now)))
-            idx_next = self.mapper.idx_from_nm(nm_now + step_nm)
-
         else:
-                # 還沒正式校正 → 用簡單斜率估計
-                pulse_step = self._nm_to_pulse(step_nm)
+            # 還沒正式校正 → 用簡單斜率估計
+            pulse_step = self._nm_to_pulse(step_nm)
 
         target_idx = max(0, min(999, self.motor.position + sign * pulse_step))
         self.worker = MotorMoveWorker(self.motor, target_idx, self)

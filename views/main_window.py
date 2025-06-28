@@ -69,11 +69,13 @@ class MultiTabMainWindow(QtWidgets.QMainWindow):
     
     # MultiTabMainWindow
     def stop_all_threads(self):
-        for th in (self.scan_thread, self.jog_thread, self.check_thread):
-           if th and th.isRunning():
-               th.requestInterruption()
-               th.quit()
-               th.wait()
+        """Gracefully stop any running worker threads."""
+        for name in ("scan_thread", "jog_thread", "check_thread"):
+            th = getattr(self, name, None)
+            if th and th.isRunning():
+                th.requestInterruption()
+                th.quit()
+                th.wait()
 
     def closeEvent(self, event):  # noqa: D401
         """Cleanup resources on window close."""
