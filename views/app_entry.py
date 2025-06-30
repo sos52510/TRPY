@@ -1,3 +1,4 @@
+from utils.dependencies import ensure_dependencies
 from PyQt5 import QtGui, QtWidgets
 from views.main_window import MultiTabMainWindow
 import sys
