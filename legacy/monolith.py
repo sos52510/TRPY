@@ -1,3 +1,5 @@
+# Disable pytest collection for this legacy script
+__test__ = False
 # ---------------------- 依賴檢查 ----------------------
 def ensure_dependencies():
     import importlib.util, subprocess, sys
