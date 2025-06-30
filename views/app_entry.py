@@ -2,6 +2,8 @@ from PyQt5 import QtGui, QtWidgets
 from views.main_window import MultiTabMainWindow
 import sys
 import argparse
+import os
+os.environ["QT_QPA_PLATFORM"] = "offscreen"
 
 # 11. CLI Entry
 ##################################################
