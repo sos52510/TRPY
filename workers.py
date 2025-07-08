@@ -3,7 +3,6 @@ import time
 from PyQt5 import QtCore
 
 class ScanWorker(QtCore.QThread):
-    """Background scan: move motor → 讀 lock-in → emit data"""
 
     point_ready = QtCore.pyqtSignal(float, float, float, float)   # ev, x/edc, y/edc, edc
     run_complete = QtCore.pyqtSignal(object, object, object)      # ev_arr, x_arr, y_arr
@@ -41,9 +40,6 @@ class ScanWorker(QtCore.QThread):
                 self.point_ready.emit(ev, xs[-1], ys[-1], edc)
             self.run_complete.emit(self.ev_arr.copy(), np.asarray(xs), np.asarray(ys))
             
-##################################################
-# 7.AutoCheckWorker
-##################################################
 class AutoCheckWorker(QtCore.QThread):
     progress = QtCore.pyqtSignal(int)
     finished = QtCore.pyqtSignal(str)  # "" = OK; 其他 = 錯誤訊息
