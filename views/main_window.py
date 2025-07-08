@@ -17,7 +17,13 @@ def show_fatal(title: str, msg: str):
     box.setWindowModality(QtCore.Qt.ApplicationModal)      # 阻塞主執行緒
     box.exec_()
     sys.exit(1)
-  
+
+def show_fatal_lockin(title: str, msg: str):
+    box = QtWidgets.QMessageBox(QtWidgets.QMessageBox.Critical, title, msg)
+    box.setWindowFlag(QtCore.Qt.WindowStaysOnTopHint)      # 永遠置頂
+    box.setWindowModality(QtCore.Qt.ApplicationModal)      # 阻塞主執行緒
+    box.exec_()
+    
 class MultiTabMainWindow(QtWidgets.QMainWindow):
     def __init__(self, offline=False):
         super().__init__()
@@ -38,7 +44,9 @@ class MultiTabMainWindow(QtWidgets.QMainWindow):
                 self.lockin = LockInNF5610B()
                 self.offline = False
             except Exception as e:  # noqa: broad-except
-                show_fatal("Lock‑in Error", f"無法連接 NF 5610B\n{e}")
+                show_fatal_lockin("Lock‑in Error", f"無法連接 NF 5610B\n{e}")
+                self.lockin = LockInDummy()
+                self.offline = True
             
         tabs = QtWidgets.QTabWidget()
         self.mapper = Mapper()

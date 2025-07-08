@@ -26,7 +26,6 @@ ensure_dependencies()
 from PyQt5 import QtGui, QtWidgets
 from views.main_window import MultiTabMainWindow
 import argparse
-os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 # 11. CLI Entry
 ##################################################
