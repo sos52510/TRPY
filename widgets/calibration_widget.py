@@ -4,7 +4,7 @@ from workers import MotorMoveWorker
 class CalibrationWidget(QtWidgets.QWidget):
     """手動建立 / 載入校正表；支援 jog 微移馬達。"""
     cal_loaded = QtCore.pyqtSignal(list)          # [(nm, phys_idx), …]
-
+    
     def __init__(self, motor, mapper, parent=None):
         super().__init__(parent)
         self.motor = motor
@@ -14,14 +14,21 @@ class CalibrationWidget(QtWidgets.QWidget):
 
         # ───── 控件 ─────
         self.spn_nm   = QtWidgets.QDoubleSpinBox(); self.spn_nm.setRange(100,3000); self.spn_nm.setDecimals(1); self.spn_nm.setSingleStep(0.1)
-        self.spn_idx_now  = QtWidgets.QSpinBox();      self.spn_idx_now.setRange(0,999); self.spn_idx_now.setValue(500)
+        self.spn_idx_now  = QtWidgets.QSpinBox()
+        self.spn_idx_now.setRange(99, 999)              # -1 當作「尚未設定」
+        self.spn_idx_now.setSpecialValueText("— 未設定 —")
+        self.spn_idx_now.setValue(99)                   # 預設顯示「— 未設定 —」
         self.spn_step = QtWidgets.QDoubleSpinBox(); self.spn_step.setRange(0.1,200); self.spn_step.setDecimals(1); self.spn_step.setValue(1.0)
         self.btn_ccw  = QtWidgets.QPushButton("↺")
         self.btn_cw   = QtWidgets.QPushButton("↻")
         self.btn_add  = QtWidgets.QPushButton("加入校正點")
-        self.lst_pts  = QtWidgets.QListWidget()
+        self.tbl_calib  = QtWidgets.QListWidget()
         self.btn_save = QtWidgets.QPushButton("存成 CSV")
         self.btn_load = QtWidgets.QPushButton("載入校正檔…")
+
+        self.tbl_calib = QtWidgets.QTableWidget(); self.tbl_calib.setColumnCount(2)
+        self.tbl_calib.setHorizontalHeaderLabels(["idx", "nm"])
+        self.lbl_status = QtWidgets.QLabel("— 未載入 —")
 
         # ───── 版面 ─────
         g = QtWidgets.QGridLayout(self)
@@ -31,15 +38,17 @@ class CalibrationWidget(QtWidgets.QWidget):
         g.addWidget(QtWidgets.QLabel("步距 (nm)"),      1,0); g.addWidget(self.spn_step,1,1)
         g.addWidget(self.btn_ccw, 1,2); g.addWidget(self.btn_cw, 1,3)
         g.addWidget(self.btn_add, 0,4)
-        g.addWidget(self.lst_pts, 2,0,1,5)
+        g.addWidget(self.tbl_calib, 2,0,1,5)
         g.addWidget(self.btn_save,3,3); g.addWidget(self.btn_load,3,4)
+    
+        g.addWidget(self.lbl_status, 3, 0, 1, 2)
 
         # ───── 事件 ─────
         self.btn_ccw.clicked.connect(lambda: self.jog(-1))
         self.btn_cw .clicked.connect(lambda: self.jog(+1))
         self.btn_add.clicked.connect(self.add_point)
         self.btn_save.clicked.connect(self.on_save_calib)
-        self.btn_load.clicked.connect(self.on_load_calib)
+        self.btn_load.clicked.connect(self.load_calibration)
         self.motor.positionChanged.connect(self._on_motor_pos)
         self.motor.hitLimit.connect(self._on_limit)
         self.spn_idx_now.editingFinished.connect(self._on_idx_edit)
@@ -58,11 +67,14 @@ class CalibrationWidget(QtWidgets.QWidget):
 
     # ───── 功能 ─────
     def _nm_to_pulse(self, nm_val: float) -> int:
-        if len(self.cal_tbl) >= 2:                 # 已有校正 → 用斜率
+        if len(self.cal_tbl) >= 2:
             xs, ys = zip(*self.cal_tbl)
-            slope = (ys[-1]-ys[0])/(xs[-1]-xs[0])  # idx / nm
+            if xs[-1] == xs[0]:          # 防除以 0
+                return int(round(nm_val))
+            slope = (ys[-1]-ys[0])/(xs[-1]-xs[0])
             return int(round(nm_val * slope))
         return int(round(nm_val))
+
     
     def jog(self, sign: int):
         if hasattr(self, "worker") and self.worker.isRunning():
@@ -87,7 +99,7 @@ class CalibrationWidget(QtWidgets.QWidget):
         self.worker = MotorMoveWorker(self.motor, target_idx, self)
         self.worker.finished.connect(self._on_motor_pos)
         self.worker.start()
- 
+
     def add_point(self):
         lam_nm = self.spn_nm.value()
         pulse  = self.spn_idx_now.value()
@@ -96,18 +108,21 @@ class CalibrationWidget(QtWidgets.QWidget):
             QtWidgets.QMessageBox.warning(self, "未知計數器", "請先輸入目前計數器位置！")
             return
 
-        # ① 寫入 Mapper（真正的校正表）
+        # ① 寫入 Mapper
         self.mapper.add_point(idx=pulse, nm=lam_nm)
 
-        # ② 本地暫存，用來估斜率
+        # ② 本地暫存
         self.cal_tbl.append((lam_nm, pulse))
 
-        # 將 Mapper 的新資料丟出去，讓 ExperimentWidget 重建校正表
+        # ③ 更新 GUI（QTableWidget 版本）
+        row = self.tbl_calib.rowCount()
+        self.tbl_calib.insertRow(row)
+
+        self.tbl_calib.setItem(row, 0, QtWidgets.QTableWidgetItem(str(pulse)))
+        self.tbl_calib.setItem(row, 1, QtWidgets.QTableWidgetItem(f"{lam_nm:.1f}"))
+
+        # ④ 發 signal 讓 ExperimentWidget 重建校正表
         self.cal_loaded.emit(list(zip(self.mapper.nm_arr, self.mapper.idx_arr)))
-
-        # ③ 更新 GUI
-        self.lst_pts.addItem(f"λ = {lam_nm:.1f} nm   →   p = {pulse}")
-
     
     def on_save_calib(self):
         filename, _ = QtWidgets.QFileDialog.getSaveFileName(
@@ -120,14 +135,30 @@ class CalibrationWidget(QtWidgets.QWidget):
             except Exception as e:
                 QtWidgets.QMessageBox.critical(self, "存檔失敗", str(e))
 
-    def on_load_calib(self):
-        filename, _ = QtWidgets.QFileDialog.getOpenFileName(
-            self, "載入校正檔", "", "CSV (*.csv);;All Files (*)"
-        )
-        if filename:
-            try:
-                self.mapper.load(filename)
-                QtWidgets.QMessageBox.information(self, "完成", f"已載入 {filename}")
-                # 視需要刷新校正表 GUI
-            except Exception as e:
-                QtWidgets.QMessageBox.critical(self, "載入失敗", str(e))
+    def load_calibration(self):
+        path, _ = QtWidgets.QFileDialog.getOpenFileName(
+            self, "載入校正 CSV", "", "CSV (*.csv)")
+
+        if not path:          # 使用者按取消
+            return
+
+        try:
+            # 1) 交給 Mapper 讀檔（假設回傳 idx 與 nm 陣列）
+            self.mapper.load(path)
+            idx_arr = self.mapper.idx_arr       # 直接取陣列
+            nm_arr  = self.mapper.nm_arr       
+        except Exception as e:
+            QtWidgets.QMessageBox.critical(self, "載入失敗", str(e))
+            return
+
+        # 2) **把資料灌進表格**
+        self.tbl_calib.setRowCount(len(idx_arr))
+        for row, (idx, nm) in enumerate(zip(idx_arr, nm_arr)):
+            self.tbl_calib.setItem(row, 0, QtWidgets.QTableWidgetItem(str(idx)))
+            self.tbl_calib.setItem(row, 1, QtWidgets.QTableWidgetItem(f"{nm:.2f}"))
+
+        # 3) **把狀態 flag 打開，供 ExperimentWidget 檢查**
+        self.mapper.loaded = True              # ← 你原本的屬性名可能叫 ready/valid
+        self.lbl_status.setText("✔ 已成功載入")  # （可選）把提示文字換成打勾
+
+        self.cal_loaded.emit(list(zip(self.mapper.nm_arr, self.mapper.idx_arr)))

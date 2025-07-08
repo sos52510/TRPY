@@ -53,8 +53,9 @@ class ExperimentWidget(QtWidgets.QWidget):
         self.spn_wl_set = QtWidgets.QDoubleSpinBox(); self.spn_wl_set.setRange(100,3000); self.spn_wl_set.setDecimals(1); self.spn_wl_set.setValue(619.9); self.spn_wl_set.setSingleStep(0.1)
         self.spn_ev_set = QtWidgets.QDoubleSpinBox(); self.spn_ev_set.setRange(0.1,10.0); self.spn_ev_set.setDecimals(3); self.spn_ev_set.setValue(2.0); self.spn_ev_set.setSingleStep(0.001)
         self.spn_idx_now = QtWidgets.QSpinBox()
-        self.spn_idx_now.setRange(0, 999)          # 視實際行程
-        self.spn_idx_now.setValue(500)
+        self.spn_idx_now.setRange(99, 999)              # -1 當作「尚未設定」
+        self.spn_idx_now.setSpecialValueText("— 未設定 —")
+        self.spn_idx_now.setValue(99)                   # 預設顯示「— 未設定 —」
         self.mapper.l0 = self.spn_wl_start.value()
         self.mapper.dl = abs(self.spn_wl_start.value() - self.spn_wl_end.value()) / (self.spn_ev_end.value()-self.spn_ev_start.value()) * self.spn_ev_step.value() * 1239.84193 / (self.spn_ev_start.value()**2)   # 若覺得複雜可手動填
         
@@ -127,11 +128,11 @@ class ExperimentWidget(QtWidgets.QWidget):
 
         
         # 進度條：顯示 idx 或百分比
-        self.pbar = QtWidgets.QProgressBar()
-        self.pbar.setRange(0, 100)              # 0-100 %
-        self.pbar.setValue(0)
-        self.pbar.setTextVisible(True)
-        vbox.addWidget(self.pbar)               # 加在平均小圖下面
+        self.prg_goto = QtWidgets.QProgressBar()
+        self.prg_goto.setRange(0, 100)              # 0-100 %
+        self.prg_goto.setValue(0)
+        self.prg_goto.setTextVisible(True)
+        vbox.addWidget(self.prg_goto)               # 加在平均小圖下面
 
         #馬達單位換算
         self.spn_wl_set.valueChanged.connect(
@@ -164,14 +165,33 @@ class ExperimentWidget(QtWidgets.QWidget):
         idx_target = int(round(self.mapper.idx_from_nm(lam_target)))
         self._goto_with_progress(idx_target)
 
-    def _goto_with_progress(self, pulse_target):
-        pulse_now = self.motor.position
-        steps = abs(pulse_target - pulse_now)
-        if steps == 0: return
-        step = 1 if pulse_target > pulse_now else -1
-        for _ in range(steps):
-            pulse_now += step
-            self.motor.goto(pulse_now)
+    def _goto_with_progress(self, idx_target: int):
+        """把馬達走到目標 idx，並在 GUI 顯示進度；整段不凍結 UI"""
+        # 1) 進度條設定範圍
+        idx_origin = self.motor.position
+        self.prg_goto.setRange(0, abs(idx_target - idx_origin))
+        self.prg_goto.setValue(0)
+
+        # 2) 監聽馬達位置變化
+        def _on_pos(pos):
+            self.prg_goto.setValue(abs(pos - idx_origin))
+        self.motor.positionChanged.connect(_on_pos)
+
+        # 3) 真正移動馬達：放到 QThread 免得主執行緒卡住
+        def _run():
+            try:
+                self.motor.goto(idx_target)  # 韌體阻塞直到到位
+            finally:
+                # 4) 清理
+                self.motor.positionChanged.disconnect(_on_pos)
+                self.prg_goto.setValue(self.prg_goto.maximum())
+
+        self._goto_thread = QtCore.QThread(self)       # ← 挂在 self
+        self._goto_thread.run = _run
+        self._goto_thread.finished.connect(
+            lambda: setattr(self, "_goto_thread", None))
+        self._goto_thread.start()
+
             
     @QtCore.pyqtSlot(list)
     def set_calibration(self, tbl_nm_phys):
@@ -252,7 +272,10 @@ class ExperimentWidget(QtWidgets.QWidget):
         self.live_widget.btn_stop.setEnabled(True)
         self.btn_resume.setEnabled(False)
 
-        self.worker = ScanWorker(self.lockin, self.motor, ev_left, repeat_left, self)
+        idx_left = [int(round(self.mapper.idx_from_nm(1239.84193/e))) for e in ev_left]
+        self.worker = ScanWorker(self.lockin, self.motor, idx_left, ev_left,
+                                 repeat_left, self)   # 6 參數對齊
+
         self.worker.point_ready.connect(self.on_point)
         self.worker.run_complete.connect(self.on_run_complete)
         self.worker.finished.connect(self.on_worker_finish)
@@ -269,13 +292,13 @@ class ExperimentWidget(QtWidgets.QWidget):
         idx0 = 0
         idx1 = int(round((ev_e - ev_s) / step))
         self.workerAC = AutoCheckWorker(self.motor, idx0, idx1)
-        self.workerAC.progress.connect(self.pbar.setValue)
+        self.workerAC.progress.connect(self.prg_goto.setValue)
         self.workerAC.finished.connect(self._ac_done)
         self.workerAC.start()
         
     def _ac_done(self, msg):
         self._lock_ctrl(False)
-        self.pbar.setValue(0)
+        self.prg_goto.setValue(0)
         if msg:
             QtWidgets.QMessageBox.critical(self,"Auto-Check 失敗",msg)
         else:
@@ -425,3 +448,6 @@ class ExperimentWidget(QtWidgets.QWidget):
                 elif mode==2: y.append(v)
         return np.asarray(ev), np.asarray(x), np.asarray(y)
   
+    @QtCore.pyqtSlot(str)
+    def show_error_dialog(self, msg: str):
+        QtWidgets.QMessageBox.critical(self, "Lock-in Error", msg)
