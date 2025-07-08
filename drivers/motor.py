@@ -34,9 +34,9 @@ class MotorArduino(QObject):
     positionChanged = pyqtSignal(int)
 
     BAUDRATE       = 115200
-    TIMEOUT_BUFFER = 0.5         # s，加在估算時間後
+    TIMEOUT_BUFFER = 1.0         # s，加在估算時間後 (提高容錯)
     PULSE_PER_IDX  = 10          # 1 idx = 10 pulse
-    PULSE_TIME     = 0.002       # s，每脈衝驅動時間
+    PULSE_TIME     = 0.003       # s，每脈衝驅動時間 (放慢估計避免 no ACK)
 
     _lock = threading.Lock()
 

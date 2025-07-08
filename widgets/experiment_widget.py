@@ -151,16 +151,19 @@ class ExperimentWidget(QtWidgets.QWidget):
     def _on_limit(self, idx: int) -> None:
         QtWidgets.QMessageBox.warning(self, "觸及極限", f"位置 {idx} 超出安全範圍")
 
-    def goto_target(self):
-        # 1) 檢查「目前計數器」是否輸入
+    def _check_ready(self) -> bool:
         if not self._idx_known:
             QtWidgets.QMessageBox.warning(self, "未知計數器", "請先輸入目前計數器位置！")
+            return False
+        if not getattr(self.mapper, "loaded", False):
+            QtWidgets.QMessageBox.warning(self, "未載入校正", "請先到『馬達校正』分頁輸入或載入校正檔")
+            return False
+        return True
+
+    def goto_target(self):
+        if not self._check_ready() or self.cal_table is None:
             return
-        # 2) 校正表是否存在
-        if self.cal_table is None:
-            QtWidgets.QMessageBox.warning(self, "未載入校正", "請先到『馬達校正』分頁載入校正檔")
-            return
-        # 3) λ/eV → idx_user → idx_phys (校正)
+        # λ/eV → idx_user → idx_phys (校正)
         lam_target = self.spn_wl_set.value()
         idx_target = int(round(self.mapper.idx_from_nm(lam_target)))
         self._goto_with_progress(idx_target)
@@ -222,8 +225,7 @@ class ExperimentWidget(QtWidgets.QWidget):
     # 掃描控制
     # -------------------------------------------------
     def start_scan(self) -> None:
-        if not self._idx_known:
-            QtWidgets.QMessageBox.warning(self, "未知計數器", "請先輸入目前計數器位置！")
+        if not self._check_ready():
             return
         ev_s = self.spn_ev_start.value()
         ev_e = self.spn_ev_end.value()
@@ -236,7 +238,11 @@ class ExperimentWidget(QtWidgets.QWidget):
             return
 
         lam_arr = 1239.84193 / ev_arr      # eV → nm
-        idx_arr = [int(round(self.mapper.idx_from_nm(l))) for l in lam_arr] 
+        try:
+            idx_arr = [int(round(self.mapper.idx_from_nm(l))) for l in lam_arr]
+        except Exception as e:
+            QtWidgets.QMessageBox.critical(self, "校正錯誤", str(e))
+            return
         repeat = self.spn_repeat.value()
 
         self.worker = ScanWorker(self.lockin, self.motor, idx_arr, ev_arr, repeat, self)
@@ -257,6 +263,8 @@ class ExperimentWidget(QtWidgets.QWidget):
             return  # 正在掃描
         if not self.current_ev:
             QtWidgets.QMessageBox.information(self, "無可續掃", "請先停止於中途的掃描")
+            return
+        if not self._check_ready():
             return
 
         ev_left = np.array(self.current_ev)
@@ -283,8 +291,7 @@ class ExperimentWidget(QtWidgets.QWidget):
         self.tab_widget.setCurrentWidget(self.live_widget)
 
     def auto_check(self):
-        if not self._idx_known:
-            QtWidgets.QMessageBox.warning(self, "未知計數器", "請先輸入目前計數器位置！")
+        if not self._check_ready():
             return
         ev_s = self.spn_ev_start.value()
         ev_e = self.spn_ev_end.value()
