@@ -29,6 +29,7 @@ class Mapper:
         self.csv_path = csv_path
         self.idx_arr: np.ndarray
         self.nm_arr: np.ndarray
+        self.loaded = False
         self._load_csv()
 
     # ------------------------------ file I/O -------------------------------
@@ -79,6 +80,7 @@ class Mapper:
             # 空表 ── 先放 0 點
             self.idx_arr = np.array([], dtype=float)
             self.nm_arr = np.array([], dtype=float)
+            self.loaded = False
             return
         idx_list: List[float] = []
         nm_list: List[float] = []
@@ -92,6 +94,7 @@ class Mapper:
                     continue
         self.idx_arr = np.array(idx_list, dtype=float)
         self.nm_arr = np.array(nm_list, dtype=float)
+        self.loaded = self.point_count() >= MIN_POINTS
 
     def _save_csv(self) -> None:
         with self.csv_path.open("w", newline="") as f:
