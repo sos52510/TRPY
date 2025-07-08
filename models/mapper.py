@@ -32,10 +32,11 @@ class Mapper:
         self._load_csv()
 
     # ------------------------------ file I/O -------------------------------
-    def load(self, path: pathlib.Path) -> None:
-        """Load calibration data from the given CSV file."""
+    def load(self, path):
         self.csv_path = pathlib.Path(path)
-        self._load_csv()
+        self._load_csv()                 # ← 正確呼叫私有讀檔函式
+        return self.idx_arr, self.nm_arr
+
 
     def save(self, path: pathlib.Path | None = None) -> None:
         """Save current calibration data to CSV."""
@@ -67,6 +68,7 @@ class Mapper:
         self.idx_arr = self.idx_arr[sort]
         self.nm_arr = self.nm_arr[sort]
         self._save_csv()
+        self.loaded = True
 
     def point_count(self) -> int:
         return len(self.idx_arr)
