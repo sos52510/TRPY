@@ -225,6 +225,9 @@ class ExperimentWidget(QtWidgets.QWidget):
         if not self._idx_known:
             QtWidgets.QMessageBox.warning(self, "未知計數器", "請先輸入目前計數器位置！")
             return
+        if self.cal_table is None:
+            QtWidgets.QMessageBox.warning(self, "未載入校正", "請先到『馬達校正』分頁載入校正檔")
+            return
         ev_s = self.spn_ev_start.value()
         ev_e = self.spn_ev_end.value()
         step = self.spn_ev_step.value() or 0.01
@@ -255,6 +258,9 @@ class ExperimentWidget(QtWidgets.QWidget):
     def resume_scan(self):
         if hasattr(self, "worker") and self.worker.isRunning():
             return  # 正在掃描
+        if self.cal_table is None:
+            QtWidgets.QMessageBox.warning(self, "未載入校正", "請先到『馬達校正』分頁載入校正檔")
+            return
         if not self.current_ev:
             QtWidgets.QMessageBox.information(self, "無可續掃", "請先停止於中途的掃描")
             return
@@ -285,6 +291,9 @@ class ExperimentWidget(QtWidgets.QWidget):
     def auto_check(self):
         if not self._idx_known:
             QtWidgets.QMessageBox.warning(self, "未知計數器", "請先輸入目前計數器位置！")
+            return
+        if self.cal_table is None:
+            QtWidgets.QMessageBox.warning(self, "未載入校正", "請先到『馬達校正』分頁載入校正檔")
             return
         ev_s = self.spn_ev_start.value()
         ev_e = self.spn_ev_end.value()
